@@ -206,9 +206,9 @@ def fitness_token_replay(log, model):
 
     for case_id, trace in log.items():
         model.places = {place: 0 for place in model.places}
-        model.add_marking('start')
+        model.places['start'] = 1
 
-        produced = 0
+        produced = 0 
         consumed = 0
         missing = 0
 
@@ -217,7 +217,7 @@ def fitness_token_replay(log, model):
             transition_id = model.transition_name_to_id(transition_name)
 
             if transition_id is None:
-                continue
+                continue 
 
             input_places = model.input_edges.get(transition_id, [])
             output_places = model.output_edges.get(transition_id, [])
@@ -226,36 +226,44 @@ def fitness_token_replay(log, model):
                 for place in input_places:
                     model.places[place] -= 1
                     consumed += 1
+                    
                 for place in output_places:
                     model.places[place] += 1
                     produced += 1
             else:
                 for place in input_places:
-                    required_tokens = 1
+                    required_tokens = 1 
                     available_tokens = model.get_tokens(place)
-                    missing_tokens = required_tokens - available_tokens
-                    if missing_tokens > 0:
-                        missing += missing_tokens
+                    if available_tokens < required_tokens:
+                        missing += required_tokens - available_tokens
 
-        remaining = sum(model.get_tokens(place) for place in model.places)
+        remaining = sum(model.get_tokens(place) for place in model.places if place != 'end')
 
         total_consumed += consumed
         total_produced += produced
         total_missing += missing
         total_remaining += remaining
 
-    if total_consumed == 0:
-        fitness_consumed = 1.0 if total_missing == 0 else 0.0
+    if (total_consumed + total_missing) == 0:
+        fitness_consumed = 1.0
     else:
-        fitness_consumed = 1 - (total_missing / total_consumed)
+        fitness_consumed = 1 - (total_missing / (total_consumed + total_missing))
 
-    if total_produced == 0:
-        fitness_produced = 1.0 if total_remaining == 0 else 0.0
+    if (total_produced + total_remaining) == 0:
+        fitness_produced = 1.0
     else:
-        fitness_produced = 1 - (total_remaining / total_produced)
+        fitness_produced = 1 - (total_remaining / (total_produced + total_remaining))
 
     fitness = 0.5 * (fitness_consumed + fitness_produced)
 
     fitness = max(0.0, min(fitness, 1.0))
 
     return fitness
+
+# Example usage:
+log = read_from_file("extension-log-4.xes")
+log_noisy = read_from_file("extension-log-noisy-4.xes")
+
+mined_model = alpha(log)
+print("Fitness for clean log:", round(fitness_token_replay(log, mined_model), 5))
+print("Fitness for noisy log:", round(fitness_token_replay(log_noisy, mined_model), 5))
