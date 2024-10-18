@@ -205,60 +205,73 @@ def fitness_token_replay(log, model):
     total_remaining = 0
 
     for case_id, trace in log.items():
-        model.places = {place: 0 for place in model.places}
-        model.places['start'] = 1
+        # Reset the marking on the model for each trace replay
+        model.places = {place: 0 for place in model.places}  # Reset all places to 0
+        model.places['start'] = 1  # Place token in 'start' place (provided by environment)
 
-        produced = 0 
-        consumed = 0
-        missing = 0
+        produced = 0  # Tokens produced by transitions
+        consumed = 0  # Tokens consumed by transitions
+        missing = 0   # Missing tokens required for transitions
 
         for event in trace:
             transition_name = event['concept:name']
             transition_id = model.transition_name_to_id(transition_name)
 
             if transition_id is None:
-                continue 
+                continue  # Skip if transition name is not in the model
 
             input_places = model.input_edges.get(transition_id, [])
             output_places = model.output_edges.get(transition_id, [])
 
             if model.is_enabled(transition_id):
+                # Consume tokens from input places
                 for place in input_places:
                     model.places[place] -= 1
-                    consumed += 1
-                    
+                    consumed += 1  # Count tokens consumed by transitions
+
+                # Produce tokens to output places
                 for place in output_places:
                     model.places[place] += 1
-                    produced += 1
+                    produced += 1  # Count tokens produced by transitions
+
             else:
+                # Transition is not enabled; count missing tokens
                 for place in input_places:
-                    required_tokens = 1 
+                    required_tokens = 1  # Assuming arc weight is 1
                     available_tokens = model.get_tokens(place)
                     if available_tokens < required_tokens:
-                        missing += required_tokens - available_tokens
+                        missing += (required_tokens - available_tokens)
 
-        remaining = sum(model.get_tokens(place) for place in model.places if place != 'end')
+        # Remaining tokens in places (excluding 'end' place)
+        remaining = sum(
+            tokens for place, tokens in model.places.items()
+            if place != 'end' and tokens > 0
+        )
 
-        total_consumed += consumed
+        # Accumulate totals
         total_produced += produced
+        total_consumed += consumed
         total_missing += missing
         total_remaining += remaining
 
-    if (total_consumed + total_missing) == 0:
-        fitness_consumed = 1.0
-    else:
+    # Compute fitness using the correct formula
+    if (total_consumed + total_missing) > 0:
         fitness_consumed = 1 - (total_missing / (total_consumed + total_missing))
-
-    if (total_produced + total_remaining) == 0:
-        fitness_produced = 1.0
     else:
+        fitness_consumed = 1.0
+
+    if (total_produced + total_remaining) > 0:
         fitness_produced = 1 - (total_remaining / (total_produced + total_remaining))
+    else:
+        fitness_produced = 1.0
 
     fitness = 0.5 * (fitness_consumed + fitness_produced)
 
+    # Clamp the fitness value between 0 and 1
     fitness = max(0.0, min(fitness, 1.0))
 
     return fitness
+
 
 # Example usage:
 log = read_from_file("extension-log-4.xes")
