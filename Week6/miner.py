@@ -1,66 +1,77 @@
-import datetime
 import xml.etree.ElementTree as ET
-import itertools
-from collections import defaultdict
+from datetime import datetime
+import copy
 
-class PetriNet():
+class PetriNet:
     def __init__(self):
         self.places = {}
         self.transitions = {}
-        self.input_edges = {}
-        self.output_edges = {}
-        self.name_to_id = {}
+        self.edges = {}
+        self.missed_fires = self.completed_fires = self.rejections = 0.0
+        self.priority = 1.0
 
-    def add_place(self, name):
-        if name not in self.places:
-            self.places[name] = 0
+    def reset_parameters(self):
+        self.missed_fires = self.completed_fires = self.rejections = 0.0
+        self.priority = 1.0
+
+    def add_place(self, place_name):
+        self.places[place_name] = 0
         return self
 
-    def add_transition(self, name, transition_id):
-        if transition_id not in self.transitions:
-            self.transitions[transition_id] = name
-            self.name_to_id[name] = transition_id
+    def add_transition(self, transition_name, transition_id):
+        self.transitions[transition_id] = {
+            'name': transition_name,
+            'inputs': set(),
+            'outputs': set()
+        }
         return self
 
     def add_edge(self, source, target):
-        if source in self.places and target in self.transitions:
-            if target not in self.input_edges:
-                self.input_edges[target] = []
-            self.input_edges[target].append(source)
-        elif source in self.transitions and target in self.places:
-            if source not in self.output_edges:
-                self.output_edges[source] = []
-            self.output_edges[source].append(target)
+        if source > 0 > target:
+            self.transitions[target]['inputs'].add(source)
+        elif source < 0 < target:
+            self.transitions[source]['outputs'].add(target)
         return self
 
-    def get_tokens(self, place):
-        return self.places.get(place, 0)
+    def get_token_count(self, place_name):
+        return self.places[place_name]
 
-    def is_enabled(self, transition):
-        if transition not in self.input_edges:
-            return False
-        for place in self.input_edges[transition]:
-            if self.places[place] < 1:
+    def is_transition_enabled(self, transition_id):
+        for place in self.transitions[transition_id]['inputs']:
+            if self.places[place] == 0:
                 return False
         return True
 
-    def add_marking(self, place):
-        if place in self.places:
-            self.places[place] += 1
+    def add_token(self, place_name):
+        self.places[place_name] += 1
         return self
 
-    def fire_transition(self, transition):
-        if self.is_enabled(transition):
-            for place in self.input_edges[transition]:
+    def execute_transition(self, transition_id):
+        if self.is_transition_enabled(transition_id):
+            for place in self.transitions[transition_id]['inputs']:
                 self.places[place] -= 1
-            for place in self.output_edges.get(transition, []):
+                self.completed_fires += 1
+            for place in self.transitions[transition_id]['outputs']:
                 self.places[place] += 1
+                self.priority += 1
         else:
-            print(f"Transition {self.transitions[transition]} is not enabled.")
+            for place in self.transitions[transition_id]['inputs']:
+                self.places[place] += 1
+                self.missed_fires += 1
+            for place in self.transitions[transition_id]['inputs']:
+                self.places[place] -= 1
+                self.completed_fires += 1
+            for place in self.transitions[transition_id]['outputs']:
+                self.places[place] += 1
+                self.priority += 1
         return self
 
-    def transition_name_to_id(self, name):
-        return self.name_to_id.get(name, None)
+    def get_transition_id(self, transition_name):
+        for transition_id, transition_data in self.transitions.items():
+            if transition_data['name'] == transition_name:
+                return transition_id
+        return None
+
 
 def build_dependency_graph(log):
     dependency_graph = {}
